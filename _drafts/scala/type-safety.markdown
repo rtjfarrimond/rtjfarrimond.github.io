@@ -1,13 +1,25 @@
+---
+layout: post
+title:  "Type Safety: Make your compiler work for you!"
+date:   2020-06-06 10:19:45 +0100
+tags: ["scala", "type safety", "clean code"]
+category: scala
+---
+
 I like precise, expressive types. They serve as compiler enforcible
-documentation that make understanding the intention of code more intuitive.
+documentation that make understanding the intention of code more intuitive. In
+this post we will look at how we can use types to enforce constraints, turning
+potential bugs or runtime errors into issues that are caught at compile time.
+We will also see that in doing so, we keep our code clean and easy for readers
+to understand and maintain.
+
+## Pessimistic Locking Example
 
 Consider pessimistic locking as a motivating example. We need to acquire a lock
 on some resource in order to carry out a computation, whilst avoiding
 contention from other processes.
 
-## Pessimistic Locking Example
-
-We might have a set of methods to `get`, `lock`, and `unlock`
+Suppose we have a set of methods to `get`, `lock`, and `unlock`
 resources. An initial interface could look something like this:
 
 ```scala
@@ -23,11 +35,11 @@ class StubResourceService {
 }
 ```
 
-And our client code might look something like:
+And the client code that uses the implementation above:
 
 ```scala
 val svc = new StubResourceService
-// svc: StubResourceService = repl.Session$App$StubResourceService@324a5538
+// svc: StubResourceService = repl.Session$App$StubResourceService@2160ea42
 
 def potentiallyDangerousComputation(resource: Resource): Resource = {
     // Some logic that requires the resource to be locked
@@ -35,7 +47,7 @@ def potentiallyDangerousComputation(resource: Resource): Resource = {
 }
 
 val resource = svc.getResource(UUID.randomUUID())
-// resource: Resource = Resource(3bafd273-d43b-458f-8c5f-239cf9b70c0b)
+// resource: Resource = Resource(40341158-898f-4608-af5b-a5d7babbc932)
 
 val errorOrResource =
     if (svc.lockResource(resource)) {
@@ -49,11 +61,13 @@ val errorOrResource =
         Left("Could not acquire lock on resource")
     }
 // errorOrResource: Either[String, Resource] = Right(
-//   Resource(3bafd273-d43b-458f-8c5f-239cf9b70c0b)
+//   Resource(40341158-898f-4608-af5b-a5d7babbc932)
 // )
 ```
 
 ## Problems with this approach
+
+### 1) We cannot distinguish a locked resource from one that is not locked
 
 As it is this implementation will work as expected, locking our resource before
 carrying out the potentially dangerous computation, and releasing the lock when
@@ -62,17 +76,19 @@ constraints that we wish to impose by doing something like this:
 
 ```scala
 val notLockedResource = svc.getResource(UUID.randomUUID())
-// notLockedResource: Resource = Resource(f08303de-1950-49e2-86e6-ae101cb8550a)
+// notLockedResource: Resource = Resource(669a5f88-f342-42ea-9172-9230addbe465)
 val result2 = potentiallyDangerousComputation(notLockedResource)
-// result2: Resource = Resource(f08303de-1950-49e2-86e6-ae101cb8550a)
+// result2: Resource = Resource(669a5f88-f342-42ea-9172-9230addbe465)
 ```
 
 This will compile and run no problem, but we now call
 `potentiallyDangerousComputation` without first ensuring that our resource is
 locked, which is exactly the situation we want to avoid.
 
-Also, there is nothing to stop us from calling `unlock` with a resource that is
-not locked.
+### 2) Boolean results can be misleading
+
+Additionally, there is nothing to stop us from calling `unlock` with a resource
+that is not locked.
 
 ```scala
 svc.unlockResource(notLockedResource)
@@ -119,15 +135,15 @@ def lockedComputation(resource: Resource): Either[String, Resource] = {
 
 lockedComputation(resource)
 // res1: Either[String, Resource] = Right(
-//   Resource(3bafd273-d43b-458f-8c5f-239cf9b70c0b)
+//   Resource(40341158-898f-4608-af5b-a5d7babbc932)
 // )
 ```
 
 But `lockedComputation` has multiple concerns, it has to handle the locking and
 unlocking as well as performing the work it is actually intended to carry out.
-This is clearly a violation of the [Single Responsibility Principal][srp].
+This is clearly a violation of the [Single Responsibility Principle][srp].
 
-What if we instead introduce a new type and update our service to use it:
+Instead, we could introduce a new type and update our service to use it:
 
 ```scala
 case class LockedResource(resource: Resource)
@@ -170,20 +186,20 @@ saferComputation(notLockedResource)
 // error: type mismatch;
 //  found   : repl.Session.App.Resource
 //  required: repl.Session.App.LockedResource
-// saferComputation(notLockedResource)
-//                  ^^^^^^^^^^^^^^^^^
+// saferComputation(LockedResource(notLockedResource))
+//                                 ^^^^^^^^^^^^^^^^^
 ```
 
 ```scala
 val betterSvc = new StubBetterResourceService
-// betterSvc: StubBetterResourceService = repl.Session$App$StubBetterResourceService@28bdf256
+// betterSvc: StubBetterResourceService = repl.Session$App$StubBetterResourceService@7aa45d4f
 val resource2 = betterSvc.getResource(UUID.randomUUID())
-// resource2: Resource = Resource(b29f7368-3386-455b-9730-6dfc7e45baa1)
+// resource2: Resource = Resource(946f6d6b-34bb-4af9-84f4-d371ad2916f8)
 val processedResource = betterSvc.lockResource(resource2)
     .map(saferComputation)
     .flatMap(betterSvc.unlockResource)
 // processedResource: Either[String, Resource] = Right(
-//   Resource(b29f7368-3386-455b-9730-6dfc7e45baa1)
+//   Resource(946f6d6b-34bb-4af9-84f4-d371ad2916f8)
 // )
 ```
 
@@ -195,14 +211,59 @@ It is of course still possible to get around the type check as simply as:
 // Still dangerous!
 saferComputation(LockedResource(notLockedResource))
 // res3: LockedResource = LockedResource(
-//   Resource(f08303de-1950-49e2-86e6-ae101cb8550a)
+//   Resource(669a5f88-f342-42ea-9172-9230addbe465)
 // )
 ```
 
-We could put further measures in place to make it impossible to directly
-instantiate a `LockedResource`, however we hope that it is clear from the
-current implementation that this is not the correct way to create one in
-application code (though it could be useful in test).
+If we wanted to be strict about preventing this we could put measures in place,
+for example by modelling `LockedResource` as a `class` with a private default
+constructor:
+
+```scala
+class SaferLockedResource private (resource: Resource) {
+  override def toString: String = s"SaferLockedResource($resource)"
+}
+
+object SaferLockedResource {
+  def acquireLock(
+    resource: Resource
+  ): Either[String, SaferLockedResource] = {
+    // Logic to lock the resource
+    Right(new SaferLockedResource(resource)) // Stub for example
+  }
+}
+
+val acquiredLockedResource =
+  SaferLockedResource.acquireLock(resource)
+// acquiredLockedResource: Either[String, SaferLockedResource] = Right(
+//   SaferLockedResource(Resource(40341158-898f-4608-af5b-a5d7babbc932))
+// )
+```
+
+```scala
+val directlyLockedResource = new SaferLockedResource(resource)
+// error: constructor SaferLockedResource in class SaferLockedResource cannot be accessed in object App
+// val directlyLockedResource = new SaferLockedResource(resource)
+//                                  ^^^^^^^^^^^^^^^^^^^
+```
+
+However, we may instead decide that the intended use is clear enough and decide
+against imposing this level of constraint, for example in order to simplify
+testing.
+
+
+## Conclusion
+
+We have seen that by creating specific types, we can make our compiler work for
+us to enforce certain preconditions before executing a particular piece of
+code. In doing so we also make the preconditions clear to readers, making the
+code easier to understand and maintain. Finally, we saw how types can allow us
+to separate concerns more easily, and ensure that our code adheres to the
+single responsibility principle.
+
+Thank you for taking the time to read this post. If you have any thoughts or
+feedback I'd love to hear it, so do feel free to reach out on Twitter or
+LinkedIn :)
 
 
 [srp]: https://en.wikipedia.org/wiki/Single-responsibility_principle
