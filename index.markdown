@@ -8,9 +8,9 @@ layout: home
 Welcome
 -------
 
-Thanks for visiting my blog! Here you will find a collection of my ramblings on
-software. Posts are made as a means of helping me think, reflect, and learn;
-they are not intended to be authoritative and I claim no particular expertise
-on any of the topics discussed here. Any discussion and feedback is greatly
-encouraged and warmly received :)
+This is my software blog, thanks for visiting! Here you will find a collection
+of my ramblings on software. Posts are made as a means of helping me think,
+reflect, and learn; they are not intended to be authoritative and I claim no
+particular expertise on any of the topics discussed here. Any discussion and
+feedback is greatly encouraged and warmly received!
 
