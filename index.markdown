@@ -5,9 +5,6 @@
 layout: home
 ---
 
-Welcome
--------
-
 This is my software blog, thanks for visiting! Here you will find a collection
 of my ramblings on software. Posts are made as a means of helping me think,
 reflect, and learn; they are not intended to be authoritative and I claim no
