@@ -1,7 +1,7 @@
 ---
 layout: post
 title:  "Type Safety: Make your compiler work for you!"
-date:   2020-06-06 10:19:45 +0100
+date:   2021-02-18 14:30:45 +0000
 tags: ["scala", "type safety", "clean code"]
 category: scala
 ---
